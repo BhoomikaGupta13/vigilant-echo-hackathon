@@ -43,6 +43,25 @@ async def read_root():
     with open(html_file_path, "r", encoding="utf-8") as f:
         return f.read()
 
+# --- Helper function to save uploaded files ---
+def save_uploaded_file(uploaded_file: UploadFile, upload_dir: str) -> str:
+    """
+    Save an uploaded file to a temporary location and return the file path.
+    """
+    if not uploaded_file.filename:
+        raise ValueError("Uploaded file has no filename")
+    
+    # Generate unique filename to avoid conflicts
+    file_extension = os.path.splitext(uploaded_file.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    # Save the file
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(uploaded_file.file, buffer)
+    
+    return file_path
+
 # --- Analysis Endpoint (Receives Multi-Modal Files) ---
 @app.post("/analyze")
 async def analyze_content(
@@ -58,7 +77,18 @@ async def analyze_content(
     temp_files = {}
 
     try:
-        # ... (save_uploaded_file helper and file saving logic, same as before) ...
+        # Save uploaded files to temporary locations
+        if video and video.filename:
+            temp_files["video"] = save_uploaded_file(video, UPLOAD_DIR)
+            print(f"DEBUG: Video saved to {temp_files['video']}", file=sys.stderr)
+        
+        if audio and audio.filename:
+            temp_files["audio"] = save_uploaded_file(audio, UPLOAD_DIR)
+            print(f"DEBUG: Audio saved to {temp_files['audio']}", file=sys.stderr)
+        
+        if text and text.filename:
+            temp_files["text"] = save_uploaded_file(text, UPLOAD_DIR)
+            print(f"DEBUG: Text saved to {temp_files['text']}", file=sys.stderr)
 
         if not temp_files:
             raise HTTPException(status_code=400, detail="No files provided for analysis. Please upload at least one file.")
@@ -107,6 +137,7 @@ async def analyze_content(
         traceback.print_exc(file=sys.stderr)
         raise HTTPException(status_code=500, detail=f"Internal Server Error during analysis: {str(e)}")
     finally:
+        # Clean up temporary files
         for path in temp_files.values():
             if os.path.exists(path):
                 try:
