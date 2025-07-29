@@ -33,6 +33,30 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# Debug function to check environment
+def debug_environment():
+    """Debug function to check all dependencies."""
+    print("=== ENVIRONMENT DEBUG ===", file=sys.stderr)
+    
+    # Check FFmpeg
+    try:
+        import subprocess
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+        print(f"FFmpeg: {'✓ Available' if result.returncode == 0 else '✗ Failed'}", file=sys.stderr)
+    except:
+        print("FFmpeg: ✗ Not found", file=sys.stderr)
+    
+    # Check Python libraries
+    libraries = ['pydub', 'librosa', 'soundfile', 'torch', 'torchaudio', 'transformers', 'sentence_transformers']
+    for lib in libraries:
+        try:
+            __import__(lib)
+            print(f"{lib}: ✓ Available", file=sys.stderr)
+        except ImportError:
+            print(f"{lib}: ✗ Missing", file=sys.stderr)
+    
+    print("=== END DEBUG ===", file=sys.stderr)
+
 # --- Database Initialization on Startup ---
 # This function creates all defined database tables (like 'sources')
 # if they don't already exist in your 'vigilant_echo.db' file.
@@ -44,6 +68,10 @@ def on_startup_create_db_tables():
         # and creates their corresponding tables in the database.
         Base.metadata.create_all(bind=engine)
         print("INFO: Database tables created/checked successfully.", file=sys.stderr)
+        
+        # Run environment debug
+        debug_environment()
+        
     except Exception as e:
         print(f"ERROR: Failed to create database tables: {e}", file=sys.stderr)
 
@@ -117,6 +145,8 @@ def save_uploaded_file_helper(uploaded_file: UploadFile, upload_dir: str) -> str
     """
     Save an uploaded file to a temporary location and return the file path.
     """
+    print(f"DEBUG: Saving uploaded file: {uploaded_file.filename}", file=sys.stderr)
+    
     if not uploaded_file.filename:
         raise ValueError("Uploaded file has no filename") # Ensure filename exists
     
@@ -125,10 +155,21 @@ def save_uploaded_file_helper(uploaded_file: UploadFile, upload_dir: str) -> str
     file_path = os.path.join(upload_dir, unique_filename)
     
     # Save the file
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(uploaded_file.file, buffer)
-    
-    return file_path
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(uploaded_file.file, buffer)
+        
+        # Verify file was saved
+        if os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
+            print(f"DEBUG: File saved successfully: {file_path} (size: {file_size} bytes)", file=sys.stderr)
+            return file_path
+        else:
+            raise Exception("File was not saved properly")
+            
+    except Exception as e:
+        print(f"ERROR: Failed to save file {uploaded_file.filename}: {e}", file=sys.stderr)
+        raise
 
 # --- Analysis Endpoint (Receives Multi-Modal Files and Source ID) ---
 @app.post("/analyze")
@@ -139,51 +180,90 @@ async def analyze_content(
     source_id: str = Form(None), # NEW: Accept source_id as a form field from frontend
     db: Session = Depends(get_db) # NEW: Inject database session
 ):
-    print(f"DEBUG: analyze_content called.", file=sys.stderr)
+    print(f"DEBUG: === ANALYZE ENDPOINT CALLED ===", file=sys.stderr)
     print(f"DEBUG: video received: {video.filename if video else 'None'}", file=sys.stderr)
     print(f"DEBUG: audio received: {audio.filename if audio else 'None'}", file=sys.stderr)
     print(f"DEBUG: text received: {text.filename if text else 'None'}", file=sys.stderr)
-    print(f"DEBUG: source_id received: {source_id if source_id else 'None'}", file=sys.stderr) # Debug source_id
+    print(f"DEBUG: source_id received: {source_id if source_id else 'None'}", file=sys.stderr)
     
     temp_files = {} # Dictionary to store paths of saved temporary files
 
     try:
         # Save uploaded files to temporary locations using the helper
         if video and video.filename: # Check if file object exists and has a filename
+            print(f"DEBUG: Processing video file: {video.filename}", file=sys.stderr)
             temp_files["video"] = save_uploaded_file_helper(video, UPLOAD_DIR)
             print(f"DEBUG: Video saved to {temp_files['video']}", file=sys.stderr)
         
         if audio and audio.filename: # Check if file object exists and has a filename
+            print(f"DEBUG: Processing audio file: {audio.filename}", file=sys.stderr)
             temp_files["audio"] = save_uploaded_file_helper(audio, UPLOAD_DIR)
             print(f"DEBUG: Audio saved to {temp_files['audio']}", file=sys.stderr)
         
         if text and text.filename: # Check if file object exists and has a filename
+            print(f"DEBUG: Processing text file: {text.filename}", file=sys.stderr)
             temp_files["text"] = save_uploaded_file_helper(text, UPLOAD_DIR)
             print(f"DEBUG: Text saved to {temp_files['text']}", file=sys.stderr)
 
         if not temp_files:
             raise HTTPException(status_code=400, detail="No files provided for analysis. Please upload at least one file.")
 
+        print(f"DEBUG: Files to analyze: {list(temp_files.keys())}", file=sys.stderr)
+
         # --- 1. Call CM-SDD ---
-        print("Calling CM-SDD module...", file=sys.stderr)
-        cm_sdd_results = await analyze_cross_modal(
-            video_path=temp_files.get("video"),
-            audio_path=temp_files.get("audio"),
-            text_path=temp_files.get("text")
-        )
-        print("CM-SDD module finished.", file=sys.stderr)
+        print("DEBUG: Calling CM-SDD module...", file=sys.stderr)
+        try:
+            cm_sdd_results = await analyze_cross_modal(
+                video_path=temp_files.get("video"),
+                audio_path=temp_files.get("audio"),
+                text_path=temp_files.get("text")
+            )
+            print("DEBUG: CM-SDD module completed successfully.", file=sys.stderr)
+        except Exception as e:
+            print(f"ERROR: CM-SDD module failed: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            # Create a fallback result
+            cm_sdd_results = {
+                "text_content": "",
+                "audio_transcript": f"CM-SDD processing failed: {str(e)}",
+                "text_sentiment": {"label": "ERROR", "score": 0.0},
+                "audio_sentiment_implied_by_transcript": {"label": "ERROR", "score": 0.0},
+                "semantic_similarity_scores": {"text_audio": "Error"},
+                "discrepancy_detected": True,
+                "discrepancy_reason": [f"CM-SDD processing error: {str(e)}"],
+                "video_status": f"Processing failed: {str(e)}"
+            }
 
         # --- 2. Call LS-ZLF ---
-        print("Calling LS-ZLF module...", file=sys.stderr)
-        ls_zlf_results = await analyze_ls_zlf(temp_files)
-        print("LS-ZLF module finished.", file=sys.stderr)
+        print("DEBUG: Calling LS-ZLF module...", file=sys.stderr)
+        try:
+            ls_zlf_results = await analyze_ls_zlf(temp_files)
+            print("DEBUG: LS-ZLF module completed successfully.", file=sys.stderr)
+        except Exception as e:
+            print(f"ERROR: LS-ZLF module failed: {e}", file=sys.stderr)
+            ls_zlf_results = {
+                "deepfake_analysis": {
+                    "deepfake_detected": False,
+                    "reason": f"LS-ZLF processing failed: {str(e)}"
+                },
+                "llm_origin_analysis": {
+                    "llm_origin": "Error",
+                    "confidence": 0,
+                    "reason": f"LS-ZLF processing failed: {str(e)}"
+                }
+            }
 
         # --- 3. Call DP-CNG ---
-        print("Calling DP-CNG module...", file=sys.stderr)
-        dp_cng_suggestion = await generate_counter_narrative(
-            {"cm_sdd": cm_sdd_results, "ls_zlf": ls_zlf_results, "original_text_path": temp_files.get("text")}
-        )
-        print("DP-CNG module finished.", file=sys.stderr)
+        print("DEBUG: Calling DP-CNG module...", file=sys.stderr)
+        try:
+            dp_cng_suggestion = await generate_counter_narrative(
+                {"cm_sdd": cm_sdd_results, "ls_zlf": ls_zlf_results, "original_text_path": temp_files.get("text")}
+            )
+            print("DEBUG: DP-CNG module completed successfully.", file=sys.stderr)
+        except Exception as e:
+            print(f"ERROR: DP-CNG module failed: {e}", file=sys.stderr)
+            dp_cng_suggestion = f"Counter-narrative generation failed: {str(e)}"
 
         # --- Combine all AI analysis results ---
         full_analysis_results = {
@@ -271,6 +351,7 @@ async def analyze_content(
 
         full_analysis_results["source_tracking"] = source_status # Add tracking info to final response
 
+        print(f"DEBUG: === ANALYSIS COMPLETED SUCCESSFULLY ===", file=sys.stderr)
         return full_analysis_results
 
     except HTTPException:
@@ -284,10 +365,12 @@ async def analyze_content(
         raise HTTPException(status_code=500, detail=f"Internal Server Error during analysis: {str(e)}")
     finally:
         # Clean up temporary files
-        for path in temp_files.values():
+        print(f"DEBUG: Cleaning up {len(temp_files)} temporary files", file=sys.stderr)
+        for file_type, path in temp_files.items():
             if os.path.exists(path):
                 try:
                     os.remove(path)
-                    print(f"Cleaned up temporary file: {path}", file=sys.stderr)
+                    print(f"DEBUG: Cleaned up temporary file: {path}", file=sys.stderr)
                 except OSError as e:
                     print(f"ERROR: Failed to clean up file {path}: {e}", file=sys.stderr)
+        print(f"DEBUG: === ANALYZE ENDPOINT FINISHED ===", file=sys.stderr)
