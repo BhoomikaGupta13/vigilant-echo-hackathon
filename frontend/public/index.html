@@ -3,27 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vigilant Echo: Misinformation Analyzer</title>
-    <link rel="stylesheet" href="/static/style.css"> </head>
+    <title>Vigilant Echo</title>
+    <link rel="stylesheet" href="/static/style.css"> 
+</head>
 <body>
     <div class="container">
         <h1>Vigilant Echo: Misinformation Analyzer</h1>
-        <p>Upload video, audio, and/or text to detect deepfakes & misinformation.</p>
-
+        <p>Upload multi-modal content (video, audio, and/or text) for real-time misinformation detection and counter-narrative generation.</p>
+        
         <form id="uploadForm">
-            <label for="videoFile">Upload Video (MP4, MOV, etc.):</label>
+            <label for="videoFile">Upload Video (Optional):</label>
             <input type="file" id="videoFile" name="video" accept="video/*"><br><br>
 
-            <label for="audioFile">Upload Audio (MP3, WAV, etc.):</label>
-            <input type="file" id="audioFile" name="audio" accept="audio/*"><br><br>
+            <label for="audioFile">Upload Audio Transcript (as .txt for Demo):</label>
+            <input type="file" id="audioFile" name="audio" accept=".txt"><br><br>
 
-            <label for="textFile">Upload Text (Transcript, Article - .txt, .md):</label>
+            <label for="textFile">Upload Main Text (Article/Post):</label>
             <input type="file" id="textFile" name="text" accept=".txt,.md"><br><br>
+
+            <label for="sourceId">Source ID (e.g., @TwitterHandle, Website.com):</label>
+            <input type="text" id="sourceId" name="source_id" placeholder="Optional: Enter source identifier"><br><br>
 
             <button type="submit">Analyze Content</button>
         </form>
-        <div id="results"></div>
+        
+        <div id="results">
+            <p class="initial-message">Upload files above and click "Analyze Content" to see the report.</p>
+        </div>
+
+        <!-- <div class="source-list-container">
+            <h2>📊 Tracked Misinformation Sources</h2>
+            <button id="refreshSourcesBtn">Refresh Tracked Sources</button>
+            <div id="trackedSourcesList">
+                <p class="initial-message">Click 'Refresh Tracked Sources' to view all sources analyzed so far.</p>
+            </div>
+        </div> -->
+
     </div>
-    <script type="module" src="/static/app.js"></script> 
+    <script src="/static/app.js"></script> 
 </body>
 </html>
