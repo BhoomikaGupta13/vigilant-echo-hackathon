@@ -9,8 +9,8 @@ from fastapi.staticfiles import StaticFiles
 
 # --- Import your modules ---
 from .modules.cm_sdd import analyze_cross_modal # UNCOMMENT THIS LINE
-# from .modules.ls_zlf import analyze_ls_zlf   # Will uncomment later
-# from .modules.dp_cng import generate_counter_narrative # Will uncomment later
+from .modules.ls_zlf import analyze_ls_zlf   # Will uncomment later
+from .modules.dp_cng import generate_counter_narrative # Will uncomment later
 # --- Configuration ---
 UPLOAD_DIR = "uploaded_media"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -47,43 +47,46 @@ async def read_root():
 @app.post("/analyze")
 async def analyze_content(
     video: UploadFile = File(None),
-    audio: UploadFile = File(None), # For Round 1, this should be a text file (transcript)
+    audio: UploadFile = File(None),
     text: UploadFile = File(None)
 ):
+    print(f"DEBUG: analyze_content called.", file=sys.stderr)
+    print(f"DEBUG: video received: {video.filename if video else 'None'}", file=sys.stderr)
+    print(f"DEBUG: audio received: {audio.filename if audio else 'None'}", file=sys.stderr)
+    print(f"DEBUG: text received: {text.filename if text else 'None'}", file=sys.stderr)
+    
     temp_files = {}
 
     try:
-        def save_uploaded_file(uploaded_file: UploadFile, file_type: str):
-            if uploaded_file:
-                file_extension = os.path.splitext(uploaded_file.filename)[1]
-                unique_filename = f"{uuid.uuid4()}{file_extension}"
-                file_path = os.path.join(UPLOAD_DIR, unique_filename)
-                with open(file_path, "wb") as buffer:
-                    shutil.copyfileobj(uploaded_file.file, buffer)
-                temp_files[file_type] = file_path
-                print(f"Saved {file_type} to: {file_path}")
-
-        save_uploaded_file(video, "video")
-        save_uploaded_file(audio, "audio") # This will be treated as text by CM-SDD
-        save_uploaded_file(text, "text")
+        # ... (save_uploaded_file helper and file saving logic, same as before) ...
 
         if not temp_files:
             raise HTTPException(status_code=400, detail="No files provided for analysis. Please upload at least one file.")
 
-        # --- Call CM-SDD ---
+        # --- 1. Call CM-SDD ---
         print("Calling CM-SDD module...", file=sys.stderr)
         cm_sdd_results = await analyze_cross_modal(
             video_path=temp_files.get("video"),
-            audio_path=temp_files.get("audio"), # Pass the path, CM-SDD will read as text
+            audio_path=temp_files.get("audio"),
             text_path=temp_files.get("text")
         )
         print("CM-SDD module finished.", file=sys.stderr)
 
 
-        # --- Placeholder for other AI Modules (LS-ZLF, DP-CNG) ---
-        # These will be integrated in the next phase
-        ls_zlf_results = {"status": "LS-ZLF pending", "deepfake_analysis": {"deepfake_detected": False, "reason": "Not yet analyzed"}, "llm_origin_analysis": {"llm_origin": "N/A", "confidence": 0, "reason": "Not yet analyzed"}}
-        dp_cng_suggestion = "Analysis in progress. Counter-narrative will be suggested here."
+        # --- 2. Call LS-ZLF ---
+        # Pass all temp_files to LS-ZLF, as it might use text for LLM analysis or video for deepfake (conceptual)
+        print("Calling LS-ZLF module...", file=sys.stderr)
+        ls_zlf_results = await analyze_ls_zlf(temp_files)
+        print("LS-ZLF module finished.", file=sys.stderr)
+
+
+        # --- 3. Call DP-CNG ---
+        # DP-CNG needs the results from previous modules to generate a context-aware response
+        print("Calling DP-CNG module...", file=sys.stderr)
+        dp_cng_suggestion = await generate_counter_narrative( # AWAIT HERE because generate_counter_narrative is now async
+            {"cm_sdd": cm_sdd_results, "ls_zlf": ls_zlf_results}
+        )
+        print("DP-CNG module finished.", file=sys.stderr)
 
 
         # --- Combine all results ---
@@ -91,7 +94,7 @@ async def analyze_content(
             "cm_sdd": cm_sdd_results,
             "ls_zlf": ls_zlf_results,
             "dp_cng_suggestion": dp_cng_suggestion,
-            "overall_status": "Analysis complete with CM-SDD results."
+            "overall_status": "All analysis modules completed."
         }
 
         return full_analysis_results

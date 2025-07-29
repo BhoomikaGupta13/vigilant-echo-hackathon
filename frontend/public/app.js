@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const audioFile = document.getElementById('audioFile').files[0];
         const textFile = document.getElementById('textFile').files[0];
 
+        console.log('Frontend Debug: videoFile object:', videoFile);
+        console.log('Frontend Debug: audioFile object:', audioFile);
+        console.log('Frontend Debug: textFile object:', textFile);
         // Only append files that are actually selected
         if (videoFile) formData.append('video', videoFile);
         if (audioFile) formData.append('audio', audioFile);
