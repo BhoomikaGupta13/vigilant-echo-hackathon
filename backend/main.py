@@ -47,7 +47,7 @@ def debug_environment():
         print("FFmpeg: ✗ Not found", file=sys.stderr)
     
     # Check Python libraries
-    libraries = ['pydub', 'librosa', 'soundfile', 'torch', 'torchaudio', 'transformers', 'sentence_transformers']
+    libraries = ['pydub', 'soundfile', 'torch', 'torchaudio', 'transformers', 'sentence_transformers', 'langdetect', 'sqlalchemy']
     for lib in libraries:
         try:
             __import__(lib)
@@ -115,9 +115,25 @@ async def get_tracked_sources(db: Session = Depends(get_db)):
         
         # Convert SQLAlchemy objects to dictionaries for JSON response
         sources_list = []
+        # Define the thresholds here as well for consistency
+        MEDIUM_RISK_THRESHOLD = 1
+        HIGH_RISK_THRESHOLD = 3
+        CRITICAL_RISK_THRESHOLD = 5
+
         for source in sources:
+            # Determine risk_level_text based on backend logic
+            risk_level_text = "N/A"
+            flags = source.flag_count or 0
+            if flags >= CRITICAL_RISK_THRESHOLD:
+                risk_level_text = "Critical Risk"
+            elif flags >= HIGH_RISK_THRESHOLD:
+                risk_level_text = "High Risk"
+            elif flags >= MEDIUM_RISK_THRESHOLD:
+                risk_level_text = "Medium Risk"
+            else:
+                risk_level_text = "Low Risk"
+
             # Handle the case where last_flagged_at might have a default timestamp
-            # If flag_count is 0, we assume it was never actually flagged
             last_flagged_display = None
             if source.flag_count > 0 and source.last_flagged_at:
                 last_flagged_display = source.last_flagged_at.isoformat()
@@ -127,7 +143,8 @@ async def get_tracked_sources(db: Session = Depends(get_db)):
                 "flag_count": source.flag_count,
                 "is_high_risk": source.is_high_risk,
                 "created_at": source.created_at.isoformat() if source.created_at else None,
-                "last_flagged_at": last_flagged_display
+                "last_flagged_at": last_flagged_display,
+                "risk_level_text": risk_level_text # Add risk level text for frontend
             })
         
         print(f"DEBUG: Retrieved {len(sources_list)} sources from database", file=sys.stderr)
@@ -232,7 +249,8 @@ async def analyze_content(
                 "semantic_similarity_scores": {"text_audio": "Error"},
                 "discrepancy_detected": True,
                 "discrepancy_reason": [f"CM-SDD processing error: {str(e)}"],
-                "video_status": f"Processing failed: {str(e)}"
+                "video_status": f"Processing failed: {str(e)}",
+                "detected_languages": {"text_language": "Error", "audio_language": "Error"} # Fallback for new fields
             }
 
         # --- 2. Call LS-ZLF ---
@@ -265,13 +283,49 @@ async def analyze_content(
             print(f"ERROR: DP-CNG module failed: {e}", file=sys.stderr)
             dp_cng_suggestion = f"Counter-narrative generation failed: {str(e)}"
 
-        # --- Combine all AI analysis results ---
+        # --- Combine all AI analysis results before source tracking ---
         full_analysis_results = {
             "cm_sdd": cm_sdd_results,
             "ls_zlf": ls_zlf_results,
             "dp_cng_suggestion": dp_cng_suggestion,
             "overall_status": "All analysis modules completed."
         }
+        
+        # --- NEW: Propagation Velocity Estimator (PVE) Logic ---
+        # Initialize propagation_velocity
+        propagation_velocity = "Slow" # Default if no strong indicators
+
+        # Determine if the content should be considered "High Impact" or "Rapid Spread"
+        is_high_impact = False
+
+        # Rule 1: High discrepancy with emotional content (from CM-SDD)
+        cm_sdd_discrepancy_detected = cm_sdd_results.get("discrepancy_detected", False)
+        cm_sdd_reasons = cm_sdd_results.get("discrepancy_reason", [])
+        
+        emotional_keywords = ["sentiment mismatch", "emotional", "strong disagreement", "contradiction"]
+        if cm_sdd_discrepancy_detected and any(keyword in r.lower() for r in cm_sdd_reasons for keyword in emotional_keywords):
+            is_high_impact = True
+
+        # Rule 2: Deepfake detected (from LS-ZLF)
+        if ls_zlf_results.get("deepfake_analysis", {}).get("deepfake_detected", False):
+            is_high_impact = True
+        
+        # Rule 3: LLM origin and content is flagged for discrepancy
+        llm_origin = ls_zlf_results.get("llm_origin_analysis", {}).get("llm_origin", "N/A")
+        if llm_origin not in ["N/A", "Human/Uncertain", "Error"] and cm_sdd_discrepancy_detected:
+            is_high_impact = True
+            
+        # Determine propagation velocity based on high impact flags
+        if is_high_impact:
+            propagation_velocity = "Rapid"
+        elif cm_sdd_discrepancy_detected or (llm_origin not in ["N/A", "Human/Uncertain", "Error"]):
+            # If just a discrepancy or LLM origin, but not "high impact"
+            propagation_velocity = "Moderate"
+        else:
+            propagation_velocity = "Slow" # If content seems clean or low impact
+
+        full_analysis_results["propagation_velocity"] = propagation_velocity
+        print(f"DEBUG: Propagation Velocity estimated as: {propagation_velocity}", file=sys.stderr)
 
         # --- Source Tracking and Flagging Logic ---
         # Initialize source_status, which will be added to the final response
@@ -284,9 +338,9 @@ async def analyze_content(
             # If CM-SDD detected a discrepancy OR LS-ZLF detected a deepfake (conceptual)
             # OR LS-ZLF detected an AI origin for text.
             is_content_flagged_by_ai = (
-                full_analysis_results["cm_sdd"]["discrepancy_detected"] or
-                (full_analysis_results["ls_zlf"]["deepfake_analysis"]["deepfake_detected"]) or # Placeholder for deepfake
-                (full_analysis_results["ls_zlf"]["llm_origin_analysis"]["llm_origin"] not in ["N/A", "Human/Uncertain"])
+                full_analysis_results["cm_sdd"].get("discrepancy_detected", False) or
+                (full_analysis_results["ls_zlf"].get("deepfake_analysis", {}).get("deepfake_detected", False)) or
+                (full_analysis_results["ls_zlf"].get("llm_origin_analysis", {}).get("llm_origin", "N/A") not in ["N/A", "Human/Uncertain", "Error"])
             )
 
             # Query the database for the source_id.
@@ -338,14 +392,16 @@ async def analyze_content(
                 risk_level_text = "High Risk"
             elif source_record.flag_count >= MEDIUM_RISK_THRESHOLD:
                 risk_level_text = "Medium Risk"
-            else: # If flag_count is 0
+            else: # If flag_count is 0 or less than medium
                 risk_level_text = "Low Risk"
 
             # Update the source_status dictionary to be sent in the response
             source_status["flag_count"] = source_record.flag_count
             source_status["is_high_risk"] = source_record.is_high_risk # Keep this for internal logic
             source_status["risk_level_text"] = risk_level_text # NEW: Add the human-readable text
-            
+            source_status["last_flagged_at"] = source_record.last_flagged_at.isoformat() if source_record.last_flagged_at else None
+
+
         else: # This block handles the case where no source_id was provided
             print("DEBUG: No source_id provided. Skipping source tracking.", flush=True)
 

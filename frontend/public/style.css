@@ -205,7 +205,7 @@ form button:active {
     font-weight: 700;
     font-size: 1.2em;
     margin-bottom: 24px;
-    color: #1a7e3d;
+    color: #1a7e3d; /* Example green for success */
     padding: 12px;
     background-color: rgba(26, 126, 61, 0.1);
     border-radius: 8px;
@@ -213,14 +213,17 @@ form button:active {
 
 .result-header {
     margin-bottom: 24px;
+    text-align: center; /* Center header content */
+    padding-bottom: 20px; /* Add some space below header */
+    border-bottom: 1px dashed #c0d8f0; /* Separator */
 }
 
 
 /* ===== HORIZONTAL ANALYSIS GRID ===== */
 .analysis-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+    display: grid; /* Changed to grid for better control */
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); /* Flexible columns */
+    gap: 25px; /* Spacing between cards */
     margin-top: 32px;
 }
 
@@ -235,8 +238,7 @@ form button:active {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
-    width: 100%;
-    display: block;
+    /* Removed width: 100%; display: block; to let grid handle it */
 }
 
 .result-card::before {
@@ -361,6 +363,10 @@ form button:active {
     min-width: 100px;
 }
 
+.detail-item.full-width {
+    grid-column: 1 / -1; /* Spans all columns in the grid */
+}
+
 .content-previews {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -416,6 +422,7 @@ form button:active {
     box-shadow: 
         0 6px 20px rgba(0, 0, 0, 0.06),
         0 2px 6px rgba(0, 0, 0, 0.04);
+    grid-column: span 2; /* Span two columns in the grid for wider layout */
 }
 
 .trust-level-box {
@@ -457,9 +464,18 @@ form button:active {
     border: 2px solid #2ecc71;
 }
 
+.explanation-section ul {
+    list-style: disc; /* Use discs for this list */
+    margin-left: 20px;
+    padding-left: 0;
+}
+
+.explanation-section ul li::before {
+    content: ''; /* Remove custom bullet */
+}
 
 /* ===== SOURCE LIST DASHBOARD ===== */
-/* .source-list-container {
+.source-list-container {
     margin-top: 48px;
     padding: 28px;
     background: linear-gradient(135deg, #fcfcfc, #f8fafb);
@@ -551,9 +567,81 @@ form button:active {
     font-style: italic;
 }
 
-.llm-analysis .detail-item {
-    font-size: 1em;
-} */
+/* NEW: Propagation Speed Styles */
+.propagation-speed {
+    text-align: center;
+    font-weight: 600;
+    font-size: 1.1em;
+    margin-bottom: 20px;
+    color: #555; /* Default text color */
+}
+
+.spread-badge {
+    display: inline-block;
+    padding: 6px 15px;
+    border-radius: 20px;
+    font-weight: bold;
+    margin-left: 10px;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.spread-rapid {
+    background: linear-gradient(135deg, #dc3545, #c82333); /* Red */
+    color: white;
+}
+
+.spread-moderate {
+    background: linear-gradient(135deg, #ffc107, #e0a800); /* Orange */
+    color: #212529; /* Dark text for contrast */
+}
+
+.spread-slow {
+    background: linear-gradient(135deg, #28a745, #218838); /* Green */
+    color: white;
+}
+
+
+/* ===== Source Risk Status Classes ===== */
+.risk-low {
+    background-color: #d4edda; /* Light green */
+    color: #155724; /* Dark green text */
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-weight: 600;
+}
+
+.risk-medium {
+    background-color: #fff3cd; /* Light orange */
+    color: #856404; /* Dark orange text */
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-weight: 600;
+}
+
+.risk-high {
+    background-color: #f8d7da; /* Light red */
+    color: #721c24; /* Dark red text */
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-weight: 600;
+}
+
+.risk-critical {
+    background-color: #721c24; /* Darker red */
+    color: white; /* White text */
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-weight: 600;
+    animation: pulse 1s infinite alternate; /* Critical risk animation */
+}
+
+@keyframes pulse {
+    from { transform: scale(1); opacity: 1; }
+    to { transform: scale(1.05); opacity: 0.9; }
+}
 
 
 /* ===== RESPONSIVE DESIGN ===== */
@@ -562,6 +650,15 @@ form button:active {
         padding: 24px 28px;
     }
     
+    .analysis-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+    }
+    
+    .trust-card {
+        grid-column: span 1; /* Make it single column on smaller screens */
+    }
+
     .sources-grid {
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 16px;
@@ -610,19 +707,11 @@ form button:active {
         margin-bottom: 32px;
     }
     
-    .sources-grid,
-    .content-previews,
-    .detail-grid {
-        grid-template-columns: 1fr;
-        gap: 16px;
-    }
-    
     .result-card {
         padding: 20px;
     }
     
-    .source-list-container {
-        margin-top: 40px;
+    #results {
         padding: 20px;
     }
 }

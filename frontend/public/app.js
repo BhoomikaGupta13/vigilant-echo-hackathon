@@ -84,12 +84,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // NEW Helper function for Propagation Velocity display
+    function getPropagationVelocityClass(velocity) {
+        switch (velocity) {
+            case 'Rapid':
+                return 'spread-rapid';
+            case 'Moderate':
+                return 'spread-moderate';
+            case 'Slow':
+                return 'spread-slow';
+            default:
+                return '';
+        }
+    }
+
+
     // --- Function to build the main analysis results HTML (DEFINED HERE, INSIDE DOMContentLoaded) ---
     function buildResultsHTML(data) {
         const cm_sdd = data.cm_sdd || {};
         const ls_zlf = data.ls_zlf || {};
         const dp_cng_suggestion = data.dp_cng_suggestion || 'N/A';
         const source_tracking = data.source_tracking || {}; 
+        const propagation_velocity = data.propagation_velocity || 'N/A'; // NEW: Get propagation velocity
+
 
         // Process discrepancy reasons for display
         const discrepancyReasonsHtml = cm_sdd.discrepancy_reason && cm_sdd.discrepancy_reason.length > 0
@@ -106,6 +123,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="result-header">
                     <h2>🔍 Analysis Results</h2>
                     <p class="overall-status"><strong>Overall Status:</strong> ${data.overall_status || "Completed."}</p>
+                    <p class="propagation-speed"><strong>Predicted Spread Speed:</strong> 
+                        <span class="spread-badge ${getPropagationVelocityClass(propagation_velocity)}">${propagation_velocity}</span>
+                    </p>
                 </div>
 
                 <div class="analysis-grid">
@@ -146,6 +166,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                       cm_sdd.semantic_similarity_scores.text_audio.toFixed(2) : 
                                       (cm_sdd.semantic_similarity_scores && cm_sdd.semantic_similarity_scores.text_audio ? cm_sdd.semantic_similarity_scores.text_audio : 'N/A')}
                                 </div>
+                                <div class="detail-item">
+                                    <strong>Text Language:</strong> 
+                                    ${cm_sdd.detected_languages && cm_sdd.detected_languages.text_language ? cm_sdd.detected_languages.text_language : 'N/A'}
+                                </div>
+                                <div class="detail-item">
+                                    <strong>Audio Language:</strong> 
+                                    ${cm_sdd.detected_languages && cm_sdd.detected_languages.audio_language ? cm_sdd.detected_languages.audio_language : 'N/A'}
+                                </div>
+                                <div class="detail-item full-width">
+                                    <strong>Video Status:</strong> 
+                                    ${cm_sdd.video_status || 'N/A'}
+                                </div>
                             </div>
                             
                             <div class="content-previews">
@@ -179,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="${getLLMOriginClass(ls_zlf.llm_origin_analysis && ls_zlf.llm_origin_analysis.llm_origin)}">
                                     ${ls_zlf.llm_origin_analysis && ls_zlf.llm_origin_analysis.llm_origin ? ls_zlf.llm_origin_analysis.llm_origin : 'N/A'}
                                 </span> 
-                                (Confidence: ${ls_zlf.llm_origin_analysis && ls_zlf.llm_origin_analysis.confidence ? (ls_zlf.llm_origin_analysis.confidence * 100).toFixed(1) + '%' : 'N/A'})
+                                (Confidence: ${ls_zlf.llm_origin_analysis && typeof ls_zlf.llm_origin_analysis.confidence === 'number' ? (ls_zlf.llm_origin_analysis.confidence * 100).toFixed(1) + '%' : 'N/A'})
                             </div>
                             <div class="reason-box">
                                 <strong>Reason:</strong> ${ls_zlf.llm_origin_analysis && ls_zlf.llm_origin_analysis.reason ? ls_zlf.llm_origin_analysis.reason : 'N/A'}
@@ -199,20 +231,26 @@ document.addEventListener('DOMContentLoaded', () => {
                             <strong>Source ID:</strong> ${source_tracking.source_id || 'N/A'}
                         </div>
                         <div class="detail-item">
-                            <strong>Flag Count:</strong> ${source_tracking.flag_count}
+                            <strong>Flag Count:</strong> ${source_tracking.flag_count || 0}
                         </div>
                         <div class="detail-item">
                             <strong>Risk Status:</strong> 
                             <span class="${getSourceRiskClass(source_tracking.risk_level_text)}">
-                                ${source_tracking.risk_level_text || 'N/A'} ${source_tracking.risk_level_text === 'Low Risk' ? '🟢' : 
+                                ${source_tracking.risk_level_text || 'N/A'} 
+                                ${source_tracking.risk_level_text === 'Low Risk' ? '🟢' : 
                                 source_tracking.risk_level_text === 'Medium Risk' ? '🟡' : 
                                 source_tracking.risk_level_text === 'High Risk' ? '🟠' : 
                                 source_tracking.risk_level_text === 'Critical Risk' ? '🔴' : ''}
                             </span>
                         </div>
                         <div class="detail-item">
-                            <strong>Tracking Status:</strong> ${source_tracking.status}
+                            <strong>Tracking Status:</strong> ${source_tracking.status || 'N/A'}
                         </div>
+                        ${source_tracking.last_flagged_at ? 
+                            `<div class="detail-item">
+                                <strong>Last Flagged:</strong> ${new Date(source_tracking.last_flagged_at).toLocaleString()}
+                            </div>` : ''
+                        }
                         <p class="small-text"><em>Source flags are based on internal system analysis. 'High Risk' indicates multiple flagged contents.</em></p>
                     </div>
                     <div class="result-card trust-card">
@@ -266,8 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sourceId) formData.append('source_id', sourceId); // Append source ID if provided
 
         // Basic validation: ensure at least one file is selected
-        if (!videoFile && !audioFile && !textFile) {
-            resultsDiv.innerHTML = '<p class="error">Please upload at least one file for analysis.</p>';
+        if (!videoFile && !audioFile && !textFile && !sourceId) { // Changed to include sourceId as a valid trigger
+            resultsDiv.innerHTML = '<p class="error">Please upload at least one file or provide a Source ID for analysis.</p>';
             resultsDiv.className = 'error-state';
             return;
         }
@@ -300,45 +338,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // NEW: Event listener for refresh sources button (This code block was moved inside DOMContentLoaded)
+    // Event listener for refresh sources button (This code block was moved inside DOMContentLoaded)
+    // Make sure the refreshSourcesBtn element exists in your HTML and is NOT commented out
     if (refreshSourcesBtn) { 
         refreshSourcesBtn.addEventListener('click', async () => {
             trackedSourcesList.innerHTML = '<p class="loading-message">Loading tracked sources...</p>';
+            trackedSourcesList.className = 'loading'; // Add loading class for source list
             try {
                 const response = await fetch('http://127.0.0.1:8000/sources');
                 const sources = await response.json();
                 console.log("Tracked Sources Backend Response:", sources); // Debug
 
                 if (response.ok) {
+                    trackedSourcesList.className = 'results-display'; // Clear loading class
                     if (sources.length === 0) {
                         trackedSourcesList.innerHTML = '<p class="initial-message">No sources tracked yet. Analyze some content first!</p>';
                     } else {
                         // Build HTML list of sources
                         let sourcesHtml = '<h3>All Tracked Sources:</h3><div class="sources-grid">';
                         sources.forEach(source => {
-                            // Calculate risk_level_text on frontend for consistency
-                            let currentRiskLevelText = "N/A"; // Default before checking
-                            const flags = source.flag_count || 0;
-                            const CRITICAL_RISK_THRESHOLD_FRONTEND = 5; // Must match backend CRITICAL_RISK_THRESHOLD
-                            const HIGH_RISK_THRESHOLD_FRONTEND = 3;     // Must match backend HIGH_RISK_THRESHOLD
-                            const MEDIUM_RISK_THRESHOLD_FRONTEND = 1;    // Must match backend MEDIUM_RISK_THRESHOLD
-
-                            if (flags >= CRITICAL_RISK_THRESHOLD_FRONTEND) {
-                                currentRiskLevelText = "Critical Risk";
-                            } else if (flags >= HIGH_RISK_THRESHOLD_FRONTEND) {
-                                currentRiskLevelText = "High Risk";
-                            } else if (flags >= MEDIUM_RISK_THRESHOLD_FRONTEND) {
-                                currentRiskLevelText = "Medium Risk";
-                            } else {
-                                currentRiskLevelText = "Low Risk";
-                            }
+                            // risk_level_text now comes directly from the backend for consistency
+                            const currentRiskLevelText = source.risk_level_text || "N/A";
+                            const lastFlaggedDisplay = source.last_flagged_at ? new Date(source.last_flagged_at).toLocaleString() : 'Never Flagged';
 
                             sourcesHtml += `
                                 <div class="source-card">
                                     <h4>${source.source_id}</h4>
                                     <p><strong>Flags:</strong> ${source.flag_count}</p>
-                                    <p><strong>Risk:</strong> <span class="${getSourceRiskClass(currentRiskLevelText)}">${currentRiskLevelText}</span></p>
-                                    <p class="small-text">Last flagged: ${source.last_flagged_at ? new Date(source.last_flagged_at).toLocaleString() : 'N/A'}</p>
+                                    <p><strong>Risk:</strong> 
+                                        <span class="${getSourceRiskClass(currentRiskLevelText)}">
+                                            ${currentRiskLevelText} 
+                                            ${currentRiskLevelText === 'Low Risk' ? '🟢' : 
+                                            currentRiskLevelText === 'Medium Risk' ? '🟡' : 
+                                            currentRiskLevelText === 'High Risk' ? '🟠' : 
+                                            currentRiskLevelText === 'Critical Risk' ? '🔴' : ''}
+                                        </span>
+                                    </p>
+                                    <p class="small-text">Last flagged: ${lastFlaggedDisplay}</p>
                                 </div>
                             `;
                         });
@@ -347,10 +383,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else {
                     trackedSourcesList.innerHTML = `<p class="error">Error loading sources: ${sources.detail || 'Unknown error'}</p>`;
+                    trackedSourcesList.className = 'error-state';
                 }
             } catch (error) {
                 console.error('Network error fetching sources:', error);
-                trackedSourcesList.innerHTML = `<p class="error">Could not connect to backend to fetch sources.</p>`;
+                trackedSourcesList.innerHTML = `<p class="error">Could not connect to backend to fetch sources. Is the backend running?</p>`;
+                trackedSourcesList.className = 'error-state';
             }
         });
     }
