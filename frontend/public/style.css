@@ -219,11 +219,11 @@ form button:active {
 }
 
 
-/* ===== HORIZONTAL ANALYSIS GRID ===== */
+/* ===== HORIZONTAL ANALYSIS GRID - UPDATED FOR TRUE HORIZONTAL LAYOUT ===== */
 .analysis-grid {
-    display: grid; /* Changed to grid for better control */
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); /* Flexible columns */
-    gap: 25px; /* Spacing between cards */
+    display: flex;
+    flex-direction: column; /* Stack cards vertically for horizontal rectangular appearance */
+    gap: 20px;
     margin-top: 32px;
 }
 
@@ -238,7 +238,8 @@ form button:active {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
-    /* Removed width: 100%; display: block; to let grid handle it */
+    width: 100%; /* Full width for horizontal rectangular appearance */
+    min-height: 120px; /* Minimum height to ensure rectangular shape */
 }
 
 .result-card::before {
@@ -422,7 +423,7 @@ form button:active {
     box-shadow: 
         0 6px 20px rgba(0, 0, 0, 0.06),
         0 2px 6px rgba(0, 0, 0, 0.04);
-    grid-column: span 2; /* Span two columns in the grid for wider layout */
+    width: 100%; /* Full width for trust card */
 }
 
 .trust-level-box {
@@ -517,8 +518,8 @@ form button:active {
 }
 
 .sources-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 20px;
     margin-top: 24px;
 }
@@ -532,6 +533,8 @@ form button:active {
         0 4px 16px rgba(0, 0, 0, 0.06),
         0 2px 6px rgba(0, 0, 0, 0.04);
     transition: all 0.3s ease;
+    flex: 1 1 280px; /* Flexible with minimum width */
+    min-width: 280px;
 }
 
 .source-card:hover {
@@ -651,17 +654,21 @@ form button:active {
     }
     
     .analysis-grid {
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 20px;
     }
     
-    .trust-card {
-        grid-column: span 1; /* Make it single column on smaller screens */
+    .result-card {
+        width: 100%;
+        min-height: 100px;
     }
-
+    
     .sources-grid {
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 16px;
+    }
+    
+    .source-card {
+        flex: 1 1 240px;
+        min-width: 240px;
     }
     
     .content-previews {
@@ -709,6 +716,17 @@ form button:active {
     
     .result-card {
         padding: 20px;
+        width: 100%;
+        min-height: 80px;
+    }
+    
+    .source-card {
+        flex: 1 1 100%;
+        min-width: 100%;
+    }
+    
+    .sources-grid {
+        flex-direction: column;
     }
     
     #results {
@@ -735,6 +753,7 @@ form button:active {
     
     .result-card {
         padding: 16px;
+        min-height: 60px;
     }
     
     #results {
