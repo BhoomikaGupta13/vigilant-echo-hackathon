@@ -151,9 +151,10 @@ async def get_tracked_sources(db: Session = Depends(get_db)):
     try:
         sources = db.query(Source).order_by(Source.flag_count.desc()).all()
 
-        MEDIUM_RISK_THRESHOLD = 1
-        HIGH_RISK_THRESHOLD = 3
-        CRITICAL_RISK_THRESHOLD = 5
+        # Define the thresholds within this function's scope
+        MEDIUM_RISK_THRESHOLD = 2 
+        HIGH_RISK_THRESHOLD = 3 
+        CRITICAL_RISK_THRESHOLD = 5 
 
         sources_list = []
         for source in sources:
