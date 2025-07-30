@@ -130,39 +130,56 @@ def save_uploaded_file_helper(uploaded_file: UploadFile, upload_dir: str) -> str
         raise 
 
 # --- NEW: Sources Endpoint (Get All Tracked Sources) ---
+# backend/main.py (Find and replace your existing get_tracked_sources function)
+
+# --- NEW: Sources Endpoint (Get All Tracked Sources) ---
 @app.get("/sources")
 async def get_tracked_sources(db: Session = Depends(get_db)):
-    logger.info("GET /sources endpoint called.") # CHANGED
+    logger.info("GET /sources endpoint called.")
     try:
+        # Query all sources from the database, ordered by flag_count descending (most flagged first)
         sources = db.query(Source).order_by(Source.flag_count.desc()).all()
-        
-        sources_list = []
-        # Define the thresholds here as well for consistency
-        MEDIUM_RISK_THRESHOLD = 1
-        HIGH_RISK_THRESHOLD = 3
-        CRITICAL_RISK_THRESHOLD = 5
 
+        # Define the thresholds within this function's scope
+        MEDIUM_RISK_THRESHOLD = 1 
+        HIGH_RISK_THRESHOLD = 3 
+        CRITICAL_RISK_THRESHOLD = 5 
+
+        sources_list = []
         for source in sources:
+            # Calculate risk_level_text for EACH source here
+            current_risk_level_text = "N/A" # Initialize for each source
+            if source.flag_count >= CRITICAL_RISK_THRESHOLD:
+                current_risk_level_text = "Critical Risk"
+            elif source.flag_count >= HIGH_RISK_THRESHOLD:
+                current_risk_level_text = "High Risk"
+            elif source.flag_count >= MEDIUM_RISK_THRESHOLD:
+                current_risk_level_text = "Medium Risk"
+            else: # If flag_count is 0
+                current_risk_level_text = "Low Risk"
+
+            # Handle last_flagged_at for display (only show if flags > 0)
             last_flagged_display = None
             if source.flag_count > 0 and source.last_flagged_at:
                 last_flagged_display = source.last_flagged_at.isoformat()
-            
+
             sources_list.append({
                 "source_id": source.source_id,
                 "flag_count": source.flag_count,
                 "is_high_risk": source.is_high_risk,
                 "created_at": source.created_at.isoformat() if source.created_at else None,
                 "last_flagged_at": last_flagged_display,
-                "risk_level_text": risk_level_text # Add risk level text for frontend
+                "risk_level_text": current_risk_level_text # Add the calculated risk level
             })
-        
-        logger.debug(f"Retrieved {len(sources_list)} sources from database.") # CHANGED
+
+        logger.debug(f"Retrieved {len(sources_list)} sources from database.")
         return sources_list
-        
+
     except Exception as e:
-        logger.error(f"Failed to retrieve sources: {e}", exc_info=True) # CHANGED
+        logger.error(f"Failed to retrieve sources: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal Server Error while fetching sources: {str(e)}")
 
+# ... (rest of main.py - analyze_content, save_uploaded_file_helper, etc.) ...
 # --- Analysis Endpoint (Receives Multi-Modal Files and Source ID) ---
 @app.post("/analyze")
 async def analyze_content(
