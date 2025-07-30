@@ -77,7 +77,6 @@ def extract_text_sentiment(text_content):
         return {'label': 'ERROR', 'score': 0.0, 'detail': str(e)}
 
 # Function to transcribe audio from a given file path (audio or extracted video audio)
-# Fully multilingual - supports automatic language detection for any language
 def transcribe_audio_from_file(audio_file_path):
     if speech_to_text_model is None or speech_to_text_processor is None:
         return "Audio transcription model not loaded."
@@ -96,14 +95,6 @@ def transcribe_audio_from_file(audio_file_path):
         elif len(audio_data) == 0:
             return "Audio file is empty or corrupted."
 
-        # Check if audio is too short (less than 0.5 seconds)
-        min_audio_length = int(0.5 * sampling_rate)  # 0.5 seconds minimum
-        if len(audio_data) < min_audio_length:
-            print(f"DEBUG: Audio too short ({len(audio_data)} samples), padding...", file=sys.stderr)
-            # Pad with silence to meet minimum length
-            padding_needed = min_audio_length - len(audio_data)
-            audio_data = np.pad(audio_data, (0, padding_needed), mode='constant', constant_values=0)
-
         # Handle stereo audio by taking the mean across channels to convert to mono (if ndim > 1)
         if audio_data.ndim > 1:
             audio_data = audio_data.mean(axis=1)
@@ -120,12 +111,6 @@ def transcribe_audio_from_file(audio_file_path):
             resampler = torchaudio.transforms.Resample(orig_freq=sampling_rate, new_freq=16000)
             waveform = resampler(waveform)
 
-        # Ensure minimum length after resampling (8000 samples = 0.5 seconds at 16kHz)
-        min_samples_16k = 8000
-        if waveform.shape[1] < min_samples_16k:
-            padding_needed = min_samples_16k - waveform.shape[1]
-            waveform = torch.nn.functional.pad(waveform, (0, padding_needed), mode='constant', value=0)
-
         # Process with Whisper ASR model
         # input_features expects numpy array, so convert back from tensor
         # Remove batch dimension for processing
@@ -138,41 +123,21 @@ def transcribe_audio_from_file(audio_file_path):
             return_tensors="pt"
         ).input_features
 
-        print(f"DEBUG: Processing audio with automatic multilingual detection...", file=sys.stderr)
-        print(f"DEBUG: Input features shape: {input_features.shape}", file=sys.stderr)
-        
-        # Generate transcription with adjusted parameters for better stability
+        # Generate transcription with proper parameters
         with torch.no_grad():
-            try:
-                # First attempt with conservative parameters
-                predicted_ids = speech_to_text_model.generate(
-                    input_features,
-                    max_new_tokens=50,  # Reduced for stability
-                    min_new_tokens=1,   # Ensure at least 1 token is generated
-                    num_beams=1,        # Reduced for stability
-                    do_sample=False,
-                    task="transcribe",
-                    use_cache=True,
-                    pad_token_id=speech_to_text_processor.tokenizer.pad_token_id,
-                    eos_token_id=speech_to_text_processor.tokenizer.eos_token_id
-                )
-            except Exception as e:
-                print(f"DEBUG: First attempt failed: {e}, trying with minimal parameters...", file=sys.stderr)
-                # Fallback with minimal parameters
-                predicted_ids = speech_to_text_model.generate(
-                    input_features,
-                    max_length=50,      # Use max_length instead of max_new_tokens
-                    num_beams=1,
-                    do_sample=False,
-                    task="transcribe"
-                )
+            predicted_ids = speech_to_text_model.generate(
+                input_features,
+                max_new_tokens=128,
+                num_beams=5,
+                do_sample=False,
+                language="hi",  # Specify Hindi language for better results
+                task="transcribe"  # Specify transcription task
+            )
 
         # Handle the case where predicted_ids might be a single tensor or batch
         if predicted_ids.ndim == 1:
             # Single sequence, add batch dimension
             predicted_ids = predicted_ids.unsqueeze(0)
-        
-        print(f"DEBUG: Generated tokens shape: {predicted_ids.shape}", file=sys.stderr)
         
         # Decode the predicted IDs to get the text transcript
         # batch_decode expects a batch, so we pass the full tensor
@@ -181,16 +146,7 @@ def transcribe_audio_from_file(audio_file_path):
             skip_special_tokens=True
         )[0]
 
-        # Clean up the transcript but preserve original language formatting
-        cleaned_transcript = transcript.strip()
-        
-        if not cleaned_transcript:
-            return "No speech detected."
-        
-        print(f"DEBUG: Multilingual transcription successful: '{cleaned_transcript[:100]}...'", file=sys.stderr)
-        
-        # Don't force to lowercase to preserve language-specific formatting
-        return cleaned_transcript
+        return transcript.strip().lower() if transcript.strip() else "No speech detected."
         
     except Exception as e:
         print(f"Error during audio transcription from {audio_file_path}: {e}", file=sys.stderr)
@@ -198,64 +154,24 @@ def transcribe_audio_from_file(audio_file_path):
         traceback.print_exc(file=sys.stderr)
         return f"Audio transcription failed: {str(e)}"
 
-# Function to detect language of a given text content - Enhanced for multilingual support
+# Function to detect language of a given text content (now part of cm_sdd.py)
 def detect_language(text_content: str) -> str:
     """
     Detects the language of a given text content.
-    Enhanced to handle multilingual and mixed-language content.
-    Returns language code or descriptive status if detection fails.
+    Returns 'unknown' or 'error' if detection fails or text is too short.
     """
     if not text_content or not text_content.strip():
         return "N/A (no content)"
     
-    if len(text_content.strip()) < 3:  # Reduced threshold for better detection
+    if len(text_content.strip()) < 5: 
         return "N/A (too short)"
 
     try:
-        # Detect primary language
         lang_code = detect(text_content)
-        
-        # Try to detect if it's mixed language content
-        # Split text into chunks and detect language of each
-        words = text_content.split()
-        if len(words) > 10:  # Only for longer texts
-            chunks = [' '.join(words[i:i+5]) for i in range(0, len(words), 5)]
-            detected_langs = []
-            
-            for chunk in chunks[:5]:  # Check first 5 chunks
-                try:
-                    chunk_lang = detect(chunk)
-                    detected_langs.append(chunk_lang)
-                except:
-                    continue
-            
-            # If multiple languages detected, indicate mixed content
-            unique_langs = list(set(detected_langs))
-            if len(unique_langs) > 1:
-                return f"{lang_code} (mixed: {', '.join(unique_langs)})"
-        
         return lang_code
-        
     except lang_detect_exception.LangDetectException as e:
-        # For very short or ambiguous text, try a more permissive approach
-        try:
-            # Use a different detection strategy for short/mixed content
-            from langdetect import detect_langs
-            probabilities = detect_langs(text_content)
-            if probabilities:
-                top_lang = probabilities[0]
-                if top_lang.prob > 0.7:
-                    return top_lang.lang
-                else:
-                    # Multiple languages detected with low confidence
-                    top_langs = [lang.lang for lang in probabilities[:2]]
-                    return f"mixed ({', '.join(top_langs)})"
-            else:
-                return "unknown"
-        except:
-            print(f"DEBUG: Language detection failed for text: '{text_content[:50]}...'", file=sys.stderr)
-            return "unknown"
-            
+        print(f"DEBUG: Language detection failed: {e} for text: '{text_content[:50]}...'", file=sys.stderr)
+        return "unknown"
     except Exception as e:
         print(f"ERROR: Unexpected error during language detection: {e}", file=sys.stderr)
         return "error"
@@ -290,11 +206,11 @@ async def analyze_cross_modal(video_path: str = None, audio_path: str = None, te
                 text_lang = detect_language(text_content)
                 results["detected_languages"]["text_language"] = text_lang
 
-                # Perform sentiment analysis for English content or mixed content with English
-                if text_lang == 'en' or 'en' in text_lang.lower():
+                # Perform sentiment analysis ONLY if language is English
+                if text_lang == 'en':
                     results["text_sentiment"] = extract_text_sentiment(text_content)
                 else:
-                    results["text_sentiment"] = {'label': 'N/A', 'score': 0.0, 'detail': f'Sentiment analysis limited to English content. Detected: {text_lang}'}
+                    results["text_sentiment"] = {'label': 'N/A', 'score': 0.0, 'detail': f'Sentiment analysis skipped for non-English text ({text_lang}).'}
         except Exception as e:
             print(f"Error reading main text file {text_path}: {e}", file=sys.stderr)
             results["text_content"] = "Error reading text."
@@ -335,11 +251,11 @@ async def analyze_cross_modal(video_path: str = None, audio_path: str = None, te
         audio_lang = detect_language(audio_transcript_content)
         results["detected_languages"]["audio_language"] = audio_lang
 
-        # Perform sentiment analysis for English content or mixed content with English
-        if audio_lang == 'en' or 'en' in audio_lang.lower():
+        # Perform sentiment analysis ONLY if language is English
+        if audio_lang == 'en':
             results["audio_sentiment_implied_by_transcript"] = extract_text_sentiment(audio_transcript_content)
         else:
-            results["audio_sentiment_implied_by_transcript"] = {'label': 'N/A', 'score': 0.0, 'detail': f'Sentiment analysis limited to English content. Detected: {audio_lang}'}
+            results["audio_sentiment_implied_by_transcript"] = {'label': 'N/A', 'score': 0.0, 'detail': f'Sentiment analysis skipped for non-English audio transcript ({audio_lang}).'}
     else:
         results["audio_transcript"] = "No audio processed."
         results["audio_sentiment_implied_by_transcript"] = {'label': 'N/A', 'score': 0.0, 'detail': 'No audio to transcribe.'}
