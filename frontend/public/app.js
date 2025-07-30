@@ -1,8 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
     const uploadForm = document.getElementById('uploadForm');
     const resultsDiv = document.getElementById('results');
-    // const refreshSourcesBtn = document.getElementById('refreshSourcesBtn'); // NEW: Button for sources list
-    // const trackedSourcesList = document.getElementById('trackedSourcesList'); // NEW: Div for sources list
+    const refreshSourcesBtn = document.getElementById('refreshSourcesBtn'); 
+    const trackedSourcesList = document.getElementById('trackedSourcesList'); 
+
+    // --- All Helper Functions (DEFINED HERE, INSIDE DOMContentLoaded) ---
 
     // Helper function to map sentiment labels to human-readable strings
     function mapSentimentLabel(label) {
@@ -67,33 +69,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Helper function for Source Risk display (Updated for nuanced levels)
-    // function getSourceRiskClass(riskLevelText) {
-    //     switch (riskLevelText) {
-    //         case 'Low Risk':
-    //             return 'risk-low';
-    //         case 'Medium Risk':
-    //             return 'risk-medium';
-    //         case 'High Risk':
-    //             return 'risk-high';
-    //         case 'Critical Risk':
-    //             return 'risk-critical';
-    //         default:
-    //             return '';
-    //     }
-    // }
+    function getSourceRiskClass(riskLevelText) {
+        switch (riskLevelText) {
+            case 'Low Risk':
+                return 'risk-low';
+            case 'Medium Risk':
+                return 'risk-medium';
+            case 'High Risk':
+                return 'risk-high';
+            case 'Critical Risk':
+                return 'risk-critical';
+            default:
+                return '';
+        }
+    }
 
-
-    // Function to build the main analysis results HTML
+    // --- Function to build the main analysis results HTML (DEFINED HERE, INSIDE DOMContentLoaded) ---
     function buildResultsHTML(data) {
         const cm_sdd = data.cm_sdd || {};
         const ls_zlf = data.ls_zlf || {};
         const dp_cng_suggestion = data.dp_cng_suggestion || 'N/A';
-        const source_tracking = data.source_tracking || {}; // Get source tracking data
+        const source_tracking = data.source_tracking || {}; 
 
         // Process discrepancy reasons for display
         const discrepancyReasonsHtml = cm_sdd.discrepancy_reason && cm_sdd.discrepancy_reason.length > 0
             ? `<ul>${cm_sdd.discrepancy_reason.map(reason => {
-                // Apply sentiment mapping to the reason string if it contains labels
                 let correctedReason = reason.replace(/LABEL_0/g, mapSentimentLabel('LABEL_0'))
                                             .replace(/LABEL_1/g, mapSentimentLabel('LABEL_1'))
                                             .replace(/LABEL_2/g, mapSentimentLabel('LABEL_2'));
@@ -118,12 +118,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             </span>
                         </div>
                         
-                        ${cm_sdd.discrepancy_detected ? // Only show reason box if discrepancy is detected
+                        ${cm_sdd.discrepancy_detected ? 
                             `<div class="reason-box">
                                 <strong>Reason(s):</strong>
                                 ${discrepancyReasonsHtml}
                             </div>` 
-                            : '' // No reason box if no discrepancy
+                            : ''
                         }
                         
                         <div class="details-section">
@@ -141,7 +141,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>
                                 <div class="detail-item">
                                     <strong>Text vs Audio Similarity:</strong> 
-                                    ${cm_sdd.semantic_similarity_scores && cm_sdd.semantic_similarity_scores.text_audio ? cm_sdd.semantic_similarity_scores.text_audio.toFixed(2) : 'N/A'}
+                                    ${cm_sdd.semantic_similarity_scores && 
+                                      typeof cm_sdd.semantic_similarity_scores.text_audio === 'number' ? 
+                                      cm_sdd.semantic_similarity_scores.text_audio.toFixed(2) : 
+                                      (cm_sdd.semantic_similarity_scores && cm_sdd.semantic_similarity_scores.text_audio ? cm_sdd.semantic_similarity_scores.text_audio : 'N/A')}
                                 </div>
                             </div>
                             
@@ -297,53 +300,59 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // NEW: Event listener for refresh sources button (added outside DOMContentLoaded listener)
-    // No, this should be INSIDE DOMContentLoaded to ensure elements exist.
-    // Moved it inside below this comment block.
-    
-    // Moved inside DOMContentLoaded below
-    // if (refreshSourcesBtn) { 
-    //     refreshSourcesBtn.addEventListener('click', async () => {
-    //         trackedSourcesList.innerHTML = '<p class="loading-message">Loading tracked sources...</p>';
-    //         try {
-    //             const response = await fetch('http://127.0.0.1:8000/sources');
-    //             const sources = await response.json();
-    //             console.log("Tracked Sources Backend Response:", sources); // Debug
+    // NEW: Event listener for refresh sources button (This code block was moved inside DOMContentLoaded)
+    if (refreshSourcesBtn) { 
+        refreshSourcesBtn.addEventListener('click', async () => {
+            trackedSourcesList.innerHTML = '<p class="loading-message">Loading tracked sources...</p>';
+            try {
+                const response = await fetch('http://127.0.0.1:8000/sources');
+                const sources = await response.json();
+                console.log("Tracked Sources Backend Response:", sources); // Debug
 
-    //             if (response.ok) {
-    //                 if (sources.length === 0) {
-    //                     trackedSourcesList.innerHTML = '<p class="initial-message">No sources tracked yet. Analyze some content first!</p>';
-    //                 } else {
-    //                     // Build HTML list of sources
-    //                     let sourcesHtml = '<h3>All Tracked Sources:</h3><div class="sources-grid">';
-    //                     sources.forEach(source => {
-    //                         // Calculate risk_level_text on frontend for consistency
-    //                         let currentRiskLevelText = "Low Risk";
-    //                         const flags = source.flag_count || 0;
-    //                         if (flags >= 5) currentRiskLevelText = "Critical Risk"; // Must match backend CRITICAL_RISK_THRESHOLD
-    //                         else if (flags >= 3) currentRiskLevelText = "High Risk"; // Must match backend HIGH_RISK_THRESHOLD
-    //                         else if (flags >= 1) currentRiskLevelText = "Medium Risk"; // Must match backend MEDIUM_RISK_THRESHOLD
+                if (response.ok) {
+                    if (sources.length === 0) {
+                        trackedSourcesList.innerHTML = '<p class="initial-message">No sources tracked yet. Analyze some content first!</p>';
+                    } else {
+                        // Build HTML list of sources
+                        let sourcesHtml = '<h3>All Tracked Sources:</h3><div class="sources-grid">';
+                        sources.forEach(source => {
+                            // Calculate risk_level_text on frontend for consistency
+                            let currentRiskLevelText = "N/A"; // Default before checking
+                            const flags = source.flag_count || 0;
+                            const CRITICAL_RISK_THRESHOLD_FRONTEND = 5; // Must match backend CRITICAL_RISK_THRESHOLD
+                            const HIGH_RISK_THRESHOLD_FRONTEND = 3;     // Must match backend HIGH_RISK_THRESHOLD
+                            const MEDIUM_RISK_THRESHOLD_FRONTEND = 1;    // Must match backend MEDIUM_RISK_THRESHOLD
 
-    //                         sourcesHtml += `
-    //                             <div class="source-card">
-    //                                 <h4>${source.source_id}</h4>
-    //                                 <p><strong>Flags:</strong> ${source.flag_count}</p>
-    //                                 <p><strong>Risk:</strong> <span class="${getSourceRiskClass(currentRiskLevelText)}">${currentRiskLevelText}</span></p>
-    //                                 <p class="small-text">Last flagged: ${source.last_flagged_at ? new Date(source.last_flagged_at).toLocaleString() : 'N/A'}</p>
-    //                             </div>
-    //                         `;
-    //                     });
-    //                     sourcesHtml += '</div>';
-    //                     trackedSourcesList.innerHTML = sourcesHtml;
-    //                 }
-    //             } else {
-    //                 trackedSourcesList.innerHTML = `<p class="error">Error loading sources: ${sources.detail || 'Unknown error'}</p>`;
-    //             }
-    //         } catch (error) {
-    //             console.error('Network error fetching sources:', error);
-    //             trackedSourcesList.innerHTML = `<p class="error">Could not connect to backend to fetch sources.</p>`;
-    //         }
-    //     });
-    // }
+                            if (flags >= CRITICAL_RISK_THRESHOLD_FRONTEND) {
+                                currentRiskLevelText = "Critical Risk";
+                            } else if (flags >= HIGH_RISK_THRESHOLD_FRONTEND) {
+                                currentRiskLevelText = "High Risk";
+                            } else if (flags >= MEDIUM_RISK_THRESHOLD_FRONTEND) {
+                                currentRiskLevelText = "Medium Risk";
+                            } else {
+                                currentRiskLevelText = "Low Risk";
+                            }
+
+                            sourcesHtml += `
+                                <div class="source-card">
+                                    <h4>${source.source_id}</h4>
+                                    <p><strong>Flags:</strong> ${source.flag_count}</p>
+                                    <p><strong>Risk:</strong> <span class="${getSourceRiskClass(currentRiskLevelText)}">${currentRiskLevelText}</span></p>
+                                    <p class="small-text">Last flagged: ${source.last_flagged_at ? new Date(source.last_flagged_at).toLocaleString() : 'N/A'}</p>
+                                </div>
+                            `;
+                        });
+                        sourcesHtml += '</div>';
+                        trackedSourcesList.innerHTML = sourcesHtml;
+                    }
+                } else {
+                    trackedSourcesList.innerHTML = `<p class="error">Error loading sources: ${sources.detail || 'Unknown error'}</p>`;
+                }
+            } catch (error) {
+                console.error('Network error fetching sources:', error);
+                trackedSourcesList.innerHTML = `<p class="error">Could not connect to backend to fetch sources.</p>`;
+            }
+        });
+    }
 
 }); // End of DOMContentLoaded event listener
